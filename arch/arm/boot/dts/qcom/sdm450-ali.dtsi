@@ -508,7 +508,7 @@
 	sound {
 		status = "ok";
 		compatible = "qcom,msm8952-audio-slim-codec";
-		qcom,model = "msm8952-marley-card";
+		qcom,model = "msm8939-tapan-snd-card"; // Actually msm8952-marley-card
 
 		qcom,l35_cpu_dai_name = "marley-aif1";
 
