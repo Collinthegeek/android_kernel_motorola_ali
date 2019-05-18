@@ -281,9 +281,7 @@ go_write:
 		goto out;
 	}
 sync_nodes:
-	atomic_inc(&sbi->wb_sync_req[NODE]);
 	ret = f2fs_fsync_node_pages(sbi, inode, &wbc, atomic);
-	atomic_dec(&sbi->wb_sync_req[NODE]);
 	if (ret)
 		goto out;
 
@@ -341,19 +339,18 @@ int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 static pgoff_t __get_first_dirty_index(struct address_space *mapping,
 						pgoff_t pgofs, int whence)
 {
-	struct page *page;
+	struct pagevec pvec;
 	int nr_pages;
 
 	if (whence != SEEK_DATA)
 		return 0;
 
 	/* find first dirty page index */
-	nr_pages = find_get_pages_tag(mapping, &pgofs, PAGECACHE_TAG_DIRTY,
-				      1, &page);
-	if (!nr_pages)
-		return ULONG_MAX;
-	pgofs = page->index;
-	put_page(page);
+	pagevec_init(&pvec, 0);
+	nr_pages = pagevec_lookup_tag(&pvec, mapping, &pgofs,
+					PAGECACHE_TAG_DIRTY, 1);
+	pgofs = nr_pages ? pvec.pages[0]->index : ULONG_MAX;
+	pagevec_release(&pvec);
 	return pgofs;
 }
 
@@ -759,7 +756,6 @@ int f2fs_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
 	int err;
-	bool size_changed = false;
 
 	if (unlikely(f2fs_cp_error(F2FS_I_SB(inode))))
 		return -EIO;
@@ -813,8 +809,6 @@ int f2fs_setattr(struct dentry *dentry, struct iattr *attr)
 		down_write(&F2FS_I(inode)->i_sem);
 		F2FS_I(inode)->last_disk_size = i_size_read(inode);
 		up_write(&F2FS_I(inode)->i_sem);
-
-		size_changed = true;
 	}
 
 	__setattr_copy(inode, attr);
@@ -828,7 +822,7 @@ int f2fs_setattr(struct dentry *dentry, struct iattr *attr)
 	}
 
 	/* file size may changed here */
-	f2fs_mark_inode_dirty_sync(inode, size_changed);
+	f2fs_mark_inode_dirty_sync(inode, true);
 
 	/* inode change will produce dirty node pages flushed by checkpoint */
 	f2fs_balance_fs(F2FS_I_SB(inode), true);
@@ -2578,8 +2572,8 @@ static int f2fs_ioc_set_pin_file(struct file *filp, unsigned long arg)
 	__u32 pin;
 	int ret = 0;
 
-	if (!inode_owner_or_capable(inode))
-		return -EACCES;
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
 
 	if (get_user(pin, (__u32 __user *)arg))
 		return -EFAULT;

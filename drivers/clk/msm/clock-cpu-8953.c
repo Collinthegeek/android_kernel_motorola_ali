@@ -131,15 +131,15 @@ static struct pll_clk apcs_hf_pll = {
 		.test_ctl_lo_val = 0x1C000000,
 	},
 	.base = &virt_bases[APCS_C0_PLL_BASE],
-	.max_rate = 2208000000UL,
-	.min_rate = 652800000UL,
+	.max_rate = 2600000000UL,
+	.min_rate = 400457000UL,
 	.src_rate =  19200000UL,
 	.c = {
 		.parent = &xo_a_clk.c,
 		.dbg_name = "apcs_hf_pll",
 		.ops = &clk_ops_variable_rate,
 		/* MX level of MSM is much higher than of PLL */
-		VDD_MX_HF_FMAX_MAP1(SVS, 2400000000UL),
+		VDD_MX_HF_FMAX_MAP1(SVS, 2700000000UL),
 		CLK_INIT(apcs_hf_pll.c),
 	},
 };
@@ -652,27 +652,29 @@ static void get_speed_bin(struct platform_device *pdev, int *bin,
 	void __iomem *base;
 	u32 pte_efuse;
 
-	*bin = 0;
+	// EFUSE1 Requires 1, but we'll still need to sync bin0 for some reason
+	*bin = 1;
 	*version = 0;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "efuse");
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "efuse1");
 	if (!res) {
 		dev_info(&pdev->dev,
-			 "No speed/PVS binning available. Defaulting to 0!\n");
+			 "No speed/PVS binning available. Defaulting to 1!\n");
 		return;
 	}
 
 	base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 	if (!base) {
 		dev_warn(&pdev->dev,
-			 "Unable to read efuse data. Defaulting to 0!\n");
+			 "Unable to read efuse data. Defaulting to 1!\n");
 		return;
 	}
 
 	pte_efuse = readl_relaxed(base);
 	devm_iounmap(&pdev->dev, base);
 
-	*bin = (pte_efuse >> 8) & 0x7;
+	// Force to use speedbin 1
+	*bin = 1;
 
 	dev_info(&pdev->dev, "Speed bin: %d PVS Version: %d\n", *bin,
 								*version);

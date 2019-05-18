@@ -141,9 +141,14 @@ PHONY += $(MAKECMDGOALS) sub-make
 $(filter-out _all sub-make $(CURDIR)/Makefile, $(MAKECMDGOALS)) _all: sub-make
 	@:
 
+# KBUILD_RELSRC is the relative path from output to source; this was added so
+# that the absolute path to source files wouldn't get encoded in vmlinux and
+# module binaries
+SUB_KBUILD_SRC = $(if $(KBUILD_RELSRC),$(KBUILD_RELSRC),$(CURDIR))
+
 sub-make:
-	$(Q)$(MAKE) -C $(KBUILD_OUTPUT) KBUILD_SRC=$(CURDIR) \
-	-f $(CURDIR)/Makefile $(filter-out _all sub-make,$(MAKECMDGOALS))
+	$(Q)$(MAKE) -C $(KBUILD_OUTPUT) KBUILD_SRC=$(SUB_KBUILD_SRC) \
+	-f $(SUB_KBUILD_SRC)/Makefile $(filter-out _all sub-make,$(MAKECMDGOALS))
 
 # Leave processing to above invocation of make
 skip-makefile := 1
@@ -296,8 +301,8 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 
 HOSTCC       = gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89
-HOSTCXXFLAGS = -O2
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -std=gnu89
+HOSTCXXFLAGS = -O3
 
 ifeq ($(shell $(HOSTCC) -v 2>&1 | grep -c "clang version"), 1)
 HOSTCFLAGS  += -Wno-unused-value -Wno-unused-parameter \
@@ -621,11 +626,16 @@ KBUILD_CFLAGS	+= $(call cc-disable-warning, int-in-bool-context)
 KBUILD_CFLAGS	+= $(call cc-disable-warning, attribute-alias)
 KBUILD_CFLAGS	+= $(call cc-option,-fno-PIE)
 KBUILD_AFLAGS	+= $(call cc-option,-fno-PIE)
+EXTRA_CFLAGS += $(call cc-option,-funroll-loops)
 
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
 else
+ifeq ($(cc-name),clang)
+KBUILD_CFLAGS	+= -O3
+else
 KBUILD_CFLAGS	+= -O2
+endif
 endif
 
 # Tell gcc to never replace conditional load with a non-conditional one
@@ -908,7 +918,7 @@ export mod_sign_cmd
 
 
 ifeq ($(KBUILD_EXTMOD),)
-core-y		+= kernel/ mm/ fs/ ipc/ security/ crypto/ block/
+core-y		+= kernel/ mm/ fs/ ipc/ security/ crypto/ block/ certs/
 
 vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
 		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
@@ -1025,7 +1035,8 @@ define filechk_utsrelease.h
 	  echo '"$(KERNELRELEASE)" exceeds $(uts_len) characters' >&2;    \
 	  exit 1;                                                         \
 	fi;                                                               \
-	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\";)
+	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\";                  \
+	echo \#define SHORT_UTS_RELEASE \"$(KERNELVERSION)$(CONFIG_LOCALVERSION)\";)
 endef
 
 define filechk_version.h
@@ -1526,11 +1537,11 @@ image_name:
 # Clear a bunch of variables before executing the submake
 tools/: FORCE
 	$(Q)mkdir -p $(objtree)/tools
-	$(Q)$(MAKE) LDFLAGS= MAKEFLAGS="$(filter --j% -j,$(MAKEFLAGS))" O=$(O) subdir=tools -C $(src)/tools/
+	$(Q)$(MAKE) LDFLAGS= MAKEFLAGS="$(filter --j% -j,$(MAKEFLAGS))" O=$(objtree) subdir=tools -C $(src)/tools/
 
 tools/%: FORCE
 	$(Q)mkdir -p $(objtree)/tools
-	$(Q)$(MAKE) LDFLAGS= MAKEFLAGS="$(filter --j% -j,$(MAKEFLAGS))" O=$(O) subdir=tools -C $(src)/tools/ $*
+	$(Q)$(MAKE) LDFLAGS= MAKEFLAGS="$(filter --j% -j,$(MAKEFLAGS))" O=$(objtree) subdir=tools -C $(src)/tools/ $*
 
 # Single targets
 # ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -30,12 +30,12 @@ static void swap_fn(struct work_struct *work);
 DECLARE_WORK(swap_work, swap_fn);
 
 /* User knob to enable/disable process reclaim feature */
-static int enable_process_reclaim;
+static int enable_process_reclaim = 1;
 module_param_named(enable_process_reclaim, enable_process_reclaim, int,
 	S_IRUGO | S_IWUSR);
 
 /* The max number of pages tried to be reclaimed in a single run */
-int per_swap_size = SWAP_CLUSTER_MAX * 32;
+int per_swap_size = SWAP_CLUSTER_MAX * 256;
 module_param_named(per_swap_size, per_swap_size, int, S_IRUGO | S_IWUSR);
 
 int reclaim_avg_efficiency;
@@ -47,10 +47,6 @@ static unsigned long pressure_min = 50;
 static unsigned long pressure_max = 90;
 module_param_named(pressure_min, pressure_min, ulong, S_IRUGO | S_IWUSR);
 module_param_named(pressure_max, pressure_max, ulong, S_IRUGO | S_IWUSR);
-
-static short min_score_adj = 360;
-module_param_named(min_score_adj, min_score_adj, short,
-	S_IRUGO | S_IWUSR);
 
 /*
  * Scheduling process reclaim workqueue unecessarily
@@ -118,6 +114,7 @@ static void swap_fn(struct work_struct *work)
 	int i;
 	int tasksize;
 	int total_sz = 0;
+	short min_score_adj = 360;
 	int total_scan = 0;
 	int total_reclaimed = 0;
 	int nr_to_reclaim;

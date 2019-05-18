@@ -161,9 +161,20 @@ Optional Properties:
 				baseAddr - base address of the gpu channels in the qdss stm memory region
 				size     - size of the gpu stm region
 
+- qcom,gpu-qtimer:
+				<baseAddr size>
+				baseAddr - base address of the qtimer memory region
+				size     - size of the qtimer region
+
 - qcom,tsens-name:
 				Specify the name of GPU temperature sensor. This name will be used
 				to get the temperature from the thermal driver API.
+
+- qcom,enable-midframe-timer:
+				Boolean. Enables the use of midframe sampling timer. This timer
+				samples the GPU powerstats if the cmdbatch expiry takes longer than
+				the threshold set by KGSL_GOVERNOR_CALL_INTERVAL. Enable only if
+				target has NAP state enabled.
 
 GPU Quirks:
 - qcom,gpu-quirk-two-pass-use-wfi:

@@ -145,9 +145,6 @@ static void _ab_buslevel_update(struct kgsl_pwrctrl *pwr,
 		*ab = pwr->bus_ab_mbytes;
 	else
 		*ab = (pwr->bus_percent_ab * max_bw) / 100;
-
-	if (*ab > ib)
-		*ab = ib;
 }
 
 /**
@@ -798,12 +795,19 @@ static ssize_t kgsl_pwrctrl_gpuclk_show(struct device *dev,
 				    struct device_attribute *attr,
 				    char *buf)
 {
+	unsigned long freq;
 	struct kgsl_device *device = kgsl_device_from_dev(dev);
 	struct kgsl_pwrctrl *pwr;
 	if (device == NULL)
 		return 0;
 	pwr = &device->pwrctrl;
-	return snprintf(buf, PAGE_SIZE, "%ld\n", kgsl_pwrctrl_active_freq(pwr));
+
+	if (device->state == KGSL_STATE_SLUMBER)
+		freq = pwr->pwrlevels[pwr->num_pwrlevels - 1].gpu_freq;
+	else
+		freq = kgsl_pwrctrl_active_freq(pwr);
+
+	return snprintf(buf, PAGE_SIZE, "%lu\n", freq);
 }
 
 static ssize_t __timer_store(struct device *dev, struct device_attribute *attr,
@@ -2076,6 +2080,42 @@ static int kgsl_pwrctrl_clk_set_rate(struct clk *grp_clk, unsigned int freq,
 	return ret;
 }
 
+static inline void _close_pcl(struct kgsl_pwrctrl *pwr)
+{
+	if (pwr->pcl)
+		msm_bus_scale_unregister_client(pwr->pcl);
+
+	pwr->pcl = 0;
+}
+
+static inline void _close_ocmem_pcl(struct kgsl_pwrctrl *pwr)
+{
+	if (pwr->ocmem_pcl)
+		msm_bus_scale_unregister_client(pwr->ocmem_pcl);
+
+	pwr->ocmem_pcl = 0;
+}
+
+static inline void _close_regulators(struct kgsl_pwrctrl *pwr)
+{
+	int i;
+
+	for (i = 0; i < KGSL_MAX_REGULATORS; i++)
+		pwr->regulators[i].reg = NULL;
+}
+
+static inline void _close_clks(struct kgsl_device *device)
+{
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+	int i;
+
+	for (i = 0; i < KGSL_MAX_CLKS; i++)
+		pwr->grp_clks[i] = NULL;
+
+	if (pwr->gpu_bimc_int_clk)
+		devm_clk_put(&device->pdev->dev, pwr->gpu_bimc_int_clk);
+}
+
 int kgsl_pwrctrl_init(struct kgsl_device *device)
 {
 	int i, k, m, n = 0, result, freq;
@@ -2093,7 +2133,7 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 
 	result = _get_clocks(device);
 	if (result)
-		return result;
+		goto error_cleanup_clks;
 
 	/* Make sure we have a source clk for freq setting */
 	if (pwr->grp_clks[0] == NULL)
@@ -2130,7 +2170,8 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 
 	if (pwr->num_pwrlevels == 0) {
 		KGSL_PWR_ERR(device, "No power levels are defined\n");
-		return -EINVAL;
+		result = -EINVAL;
+		goto error_cleanup_clks;
 	}
 
 	/* Initialize the user and thermal clock constraints */
@@ -2160,7 +2201,7 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 
 	result = get_regulators(device);
 	if (result)
-		return result;
+		goto error_cleanup_regulators;
 
 	pwr->power_flags = 0;
 
@@ -2184,8 +2225,10 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 			pwr->ocmem_pcl = msm_bus_scale_register_client
 					(ocmem_scale_table);
 
-		if (!pwr->ocmem_pcl)
-			return -EINVAL;
+		if (!pwr->ocmem_pcl) {
+			result = -EINVAL;
+			goto error_disable_pm;
+		}
 	}
 
 	/* Bus width in bytes, set it to zero if not found */
@@ -2215,14 +2258,18 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 		 * from the driver.
 		 */
 		pwr->pcl = msm_bus_scale_register_client(bus_scale_table);
-		if (pwr->pcl == 0)
-			return -EINVAL;
+		if (pwr->pcl == 0) {
+			result = -EINVAL;
+			goto error_cleanup_ocmem_pcl;
+		}
 	}
 
 	pwr->bus_ib = kzalloc(bus_scale_table->num_usecases *
 		sizeof(*pwr->bus_ib), GFP_KERNEL);
-	if (pwr->bus_ib == NULL)
-		return -ENOMEM;
+	if (pwr->bus_ib == NULL) {
+		result = -ENOMEM;
+		goto error_cleanup_pcl;
+	}
 
 	/*
 	 * Pull the BW vote out of the bus table.  They will be used to
@@ -2282,35 +2329,25 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 		&pwr->tsens_name);
 
 	return result;
+
+error_cleanup_pcl:
+	_close_pcl(pwr);
+error_cleanup_ocmem_pcl:
+	_close_ocmem_pcl(pwr);
+error_disable_pm:
+	pm_runtime_disable(&pdev->dev);
+error_cleanup_regulators:
+	_close_regulators(pwr);
+error_cleanup_clks:
+	_close_clks(device);
+	return result;
 }
 
 void kgsl_pwrctrl_close(struct kgsl_device *device)
 {
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
-	int i;
 
 	KGSL_PWR_INFO(device, "close device %d\n", device->id);
-
-	pm_runtime_disable(&device->pdev->dev);
-
-	if (pwr->pcl)
-		msm_bus_scale_unregister_client(pwr->pcl);
-
-	pwr->pcl = 0;
-
-	if (pwr->ocmem_pcl)
-		msm_bus_scale_unregister_client(pwr->ocmem_pcl);
-
-	pwr->ocmem_pcl = 0;
-
-	for (i = 0; i < KGSL_MAX_REGULATORS; i++)
-		pwr->regulators[i].reg = NULL;
-
-	for (i = 0; i < KGSL_MAX_REGULATORS; i++)
-		pwr->grp_clks[i] = NULL;
-
-	if (pwr->gpu_bimc_int_clk)
-		devm_clk_put(&device->pdev->dev, pwr->gpu_bimc_int_clk);
 
 	pwr->power_flags = 0;
 
@@ -2320,6 +2357,16 @@ void kgsl_pwrctrl_close(struct kgsl_device *device)
 		pwr->sysfs_pwr_limit = NULL;
 	}
 	kfree(pwr->bus_ib);
+
+	_close_pcl(pwr);
+
+	_close_ocmem_pcl(pwr);
+
+	pm_runtime_disable(&device->pdev->dev);
+
+	_close_regulators(pwr);
+
+	_close_clks(device);
 }
 
 /**
@@ -2489,6 +2536,7 @@ static int _init(struct kgsl_device *device)
 	case KGSL_STATE_ACTIVE:
 		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 		del_timer_sync(&device->idle_timer);
+		kgsl_pwrscale_midframe_timer_cancel(device);
 		device->ftbl->stop(device);
 		/* fall through */
 	case KGSL_STATE_AWARE:
@@ -2623,6 +2671,7 @@ _aware(struct kgsl_device *device)
 	case KGSL_STATE_ACTIVE:
 		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 		del_timer_sync(&device->idle_timer);
+		kgsl_pwrscale_midframe_timer_cancel(device);
 		break;
 	case KGSL_STATE_SLUMBER:
 		status = kgsl_pwrctrl_enable(device);
@@ -2748,6 +2797,7 @@ _slumber(struct kgsl_device *device)
 	case KGSL_STATE_SLEEP:
 	case KGSL_STATE_DEEP_NAP:
 		del_timer_sync(&device->idle_timer);
+		kgsl_pwrscale_midframe_timer_cancel(device);
 		if (device->pwrctrl.thermal_cycle == CYCLE_ACTIVE) {
 			device->pwrctrl.thermal_cycle = CYCLE_ENABLE;
 			del_timer_sync(&device->pwrctrl.thermal_timer);

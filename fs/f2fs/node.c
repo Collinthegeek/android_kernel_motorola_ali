@@ -1295,17 +1295,21 @@ iput_out:
 
 static struct page *last_fsync_dnode(struct f2fs_sb_info *sbi, nid_t ino)
 {
-	pgoff_t index;
+	pgoff_t index, end;
 	struct pagevec pvec;
 	struct page *last_page = NULL;
-	int nr_pages;
 
 	pagevec_init(&pvec, 0);
 	index = 0;
+	end = ULONG_MAX;
 
-	while ((nr_pages = pagevec_lookup_tag(&pvec, NODE_MAPPING(sbi), &index,
-				PAGECACHE_TAG_DIRTY))) {
-		int i;
+	while (index <= end) {
+		int i, nr_pages;
+		nr_pages = pagevec_lookup_tag(&pvec, NODE_MAPPING(sbi), &index,
+				PAGECACHE_TAG_DIRTY,
+				min(end - index, (pgoff_t)PAGEVEC_SIZE-1) + 1);
+		if (nr_pages == 0)
+			break;
 
 		for (i = 0; i < nr_pages; i++) {
 			struct page *page = pvec.pages[i];
@@ -1474,14 +1478,13 @@ static int f2fs_write_node_page(struct page *page,
 int f2fs_fsync_node_pages(struct f2fs_sb_info *sbi, struct inode *inode,
 			struct writeback_control *wbc, bool atomic)
 {
-	pgoff_t index;
+	pgoff_t index, end;
 	pgoff_t last_idx = ULONG_MAX;
 	struct pagevec pvec;
 	int ret = 0;
 	struct page *last_page = NULL;
 	bool marked = false;
 	nid_t ino = inode->i_ino;
-	int nr_pages;
 
 	if (atomic) {
 		last_page = last_fsync_dnode(sbi, ino);
@@ -1491,10 +1494,15 @@ int f2fs_fsync_node_pages(struct f2fs_sb_info *sbi, struct inode *inode,
 retry:
 	pagevec_init(&pvec, 0);
 	index = 0;
+	end = ULONG_MAX;
 
-	while ((nr_pages = pagevec_lookup_tag(&pvec, NODE_MAPPING(sbi), &index,
-				PAGECACHE_TAG_DIRTY))) {
-		int i;
+	while (index <= end) {
+		int i, nr_pages;
+		nr_pages = pagevec_lookup_tag(&pvec, NODE_MAPPING(sbi), &index,
+				PAGECACHE_TAG_DIRTY,
+				min(end - index, (pgoff_t)PAGEVEC_SIZE-1) + 1);
+		if (nr_pages == 0)
+			break;
 
 		for (i = 0; i < nr_pages; i++) {
 			struct page *page = pvec.pages[i];
@@ -1594,32 +1602,29 @@ int f2fs_sync_node_pages(struct f2fs_sb_info *sbi,
 				struct writeback_control *wbc,
 				bool do_balance, enum iostat_type io_type)
 {
-	pgoff_t index;
+	pgoff_t index, end;
 	struct pagevec pvec;
 	int step = 0;
 	int nwritten = 0;
 	int ret = 0;
-	int nr_pages, done = 0;
 
 	pagevec_init(&pvec, 0);
 
 next_step:
 	index = 0;
+	end = ULONG_MAX;
 
-	while (!done && (nr_pages = pagevec_lookup_tag(&pvec,
-			NODE_MAPPING(sbi), &index, PAGECACHE_TAG_DIRTY))) {
-		int i;
+	while (index <= end) {
+		int i, nr_pages;
+		nr_pages = pagevec_lookup_tag(&pvec, NODE_MAPPING(sbi), &index,
+				PAGECACHE_TAG_DIRTY,
+				min(end - index, (pgoff_t)PAGEVEC_SIZE-1) + 1);
+		if (nr_pages == 0)
+			break;
 
 		for (i = 0; i < nr_pages; i++) {
 			struct page *page = pvec.pages[i];
 			bool submitted = false;
-
-			/* give a priority to WB_SYNC threads */
-			if (atomic_read(&sbi->wb_sync_req[NODE]) &&
-					wbc->sync_mode == WB_SYNC_NONE) {
-				done = 1;
-				break;
-			}
 
 			/*
 			 * flushing sequence with step:
@@ -1701,19 +1706,26 @@ continue_unlock:
 
 int f2fs_wait_on_node_pages_writeback(struct f2fs_sb_info *sbi, nid_t ino)
 {
-	pgoff_t index = 0;
+	pgoff_t index = 0, end = ULONG_MAX;
 	struct pagevec pvec;
 	int ret2 = 0, ret = 0;
-	int nr_pages;
 
 	pagevec_init(&pvec, 0);
 
-	while ((nr_pages = pagevec_lookup_tag(&pvec, NODE_MAPPING(sbi), &index,
-				PAGECACHE_TAG_WRITEBACK))) {
-		int i;
+	while (index <= end) {
+		int i, nr_pages;
+		nr_pages = pagevec_lookup_tag(&pvec, NODE_MAPPING(sbi), &index,
+				PAGECACHE_TAG_WRITEBACK,
+				min(end - index, (pgoff_t)PAGEVEC_SIZE-1) + 1);
+		if (nr_pages == 0)
+			break;
 
 		for (i = 0; i < nr_pages; i++) {
 			struct page *page = pvec.pages[i];
+
+			/* until radix tree lookup accepts end_index */
+			if (unlikely(page->index > end))
+				continue;
 
 			if (ino && ino_of_node(page) == ino) {
 				f2fs_wait_on_page_writeback(page, NODE, true);
@@ -1751,11 +1763,6 @@ static int f2fs_write_node_pages(struct address_space *mapping,
 	if (get_pages(sbi, F2FS_DIRTY_NODES) < nr_pages_to_skip(sbi, NODE))
 		goto skip_write;
 
-	if (wbc->sync_mode == WB_SYNC_ALL)
-		atomic_inc(&sbi->wb_sync_req[NODE]);
-	else if (atomic_read(&sbi->wb_sync_req[NODE]))
-		goto skip_write;
-
 	trace_f2fs_writepages(mapping->host, wbc, NODE);
 
 	diff = nr_pages_to_write(sbi, NODE, wbc);
@@ -1763,9 +1770,6 @@ static int f2fs_write_node_pages(struct address_space *mapping,
 	f2fs_sync_node_pages(sbi, wbc, true, FS_NODE_IO);
 	blk_finish_plug(&plug);
 	wbc->nr_to_write = max((long)0, wbc->nr_to_write - diff);
-
-	if (wbc->sync_mode == WB_SYNC_ALL)
-		atomic_dec(&sbi->wb_sync_req[NODE]);
 	return 0;
 
 skip_write:

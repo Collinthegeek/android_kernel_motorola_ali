@@ -277,9 +277,10 @@ static inline void __submit_bio(struct f2fs_sb_info *sbi,
 		for (; start < F2FS_IO_SIZE(sbi); start++) {
 			struct page *page =
 				mempool_alloc(sbi->write_io_dummy,
-					GFP_NOIO | __GFP_ZERO | __GFP_NOFAIL);
+					      GFP_NOIO | __GFP_NOFAIL);
 			f2fs_bug_on(sbi, !page);
 
+			zero_user_segment(page, 0, PAGE_SIZE);
 			SetPagePrivate(page);
 			set_page_private(page, (unsigned long)DUMMY_WRITTEN_PAGE);
 			lock_page(page);
@@ -1446,6 +1447,9 @@ static int f2fs_mpage_readpages(struct address_space *mapping,
 		if (last_block > last_block_in_file)
 			last_block = last_block_in_file;
 
+		/* just zeroing out page which is beyond EOF */
+		if (block_in_file >= last_block)
+			goto zero_out;
 		/*
 		 * Map blocks using the previous result first.
 		 */
@@ -1458,16 +1462,11 @@ static int f2fs_mpage_readpages(struct address_space *mapping,
 		 * Then do more f2fs_map_blocks() calls until we are
 		 * done with this page.
 		 */
-		map.m_flags = 0;
+		map.m_lblk = block_in_file;
+		map.m_len = last_block - block_in_file;
 
-		if (block_in_file < last_block) {
-			map.m_lblk = block_in_file;
-			map.m_len = last_block - block_in_file;
-
-			if (f2fs_map_blocks(inode, &map, 0,
-						F2FS_GET_BLOCK_DEFAULT))
-				goto set_error_page;
-		}
+		if (f2fs_map_blocks(inode, &map, 0, F2FS_GET_BLOCK_DEFAULT))
+			goto set_error_page;
 got_it:
 		if ((map.m_flags & F2FS_MAP_MAPPED)) {
 			block_nr = map.m_pblk + block_in_file - map.m_lblk;
@@ -1478,6 +1477,7 @@ got_it:
 				goto confused;
 			}
 		} else {
+zero_out:
 			zero_user_segment(page, 0, PAGE_SIZE);
 			if (!PageUptodate(page))
 				SetPageUptodate(page);
@@ -1915,7 +1915,6 @@ static int f2fs_write_cache_pages(struct address_space *mapping,
 	int ret = 0;
 	int done = 0;
 	struct pagevec pvec;
-	struct f2fs_sb_info *sbi = F2FS_M_SB(mapping);
 	int nr_pages;
 	pgoff_t uninitialized_var(writeback_index);
 	pgoff_t index;
@@ -1960,8 +1959,8 @@ retry:
 	while (!done && (index <= end)) {
 		int i;
 
-		nr_pages = pagevec_lookup_range_tag(&pvec, mapping, &index, end,
-				tag);
+		nr_pages = pagevec_lookup_tag(&pvec, mapping, &index, tag,
+			      min(end - index, (pgoff_t)PAGEVEC_SIZE - 1) + 1);
 		if (nr_pages == 0)
 			break;
 
@@ -1970,8 +1969,13 @@ retry:
 			bool submitted = false;
 
 			/* give a priority to WB_SYNC threads */
-			if (atomic_read(&sbi->wb_sync_req[DATA]) &&
+			if (atomic_read(&F2FS_M_SB(mapping)->wb_sync_req) &&
 					wbc->sync_mode == WB_SYNC_NONE) {
+				done = 1;
+				break;
+			}
+
+			if (page->index > end) {
 				done = 1;
 				break;
 			}
@@ -2090,8 +2094,8 @@ static int __f2fs_write_data_pages(struct address_space *mapping,
 
 	/* to avoid spliting IOs due to mixed WB_SYNC_ALL and WB_SYNC_NONE */
 	if (wbc->sync_mode == WB_SYNC_ALL)
-		atomic_inc(&sbi->wb_sync_req[DATA]);
-	else if (atomic_read(&sbi->wb_sync_req[DATA]))
+		atomic_inc(&sbi->wb_sync_req);
+	else if (atomic_read(&sbi->wb_sync_req))
 		goto skip_write;
 
 	blk_start_plug(&plug);
@@ -2099,7 +2103,7 @@ static int __f2fs_write_data_pages(struct address_space *mapping,
 	blk_finish_plug(&plug);
 
 	if (wbc->sync_mode == WB_SYNC_ALL)
-		atomic_dec(&sbi->wb_sync_req[DATA]);
+		atomic_dec(&sbi->wb_sync_req);
 	/*
 	 * if some pages were truncated, we cannot guarantee its mapping->host
 	 * to detect pending bios.

@@ -216,7 +216,8 @@ void f2fs_register_inmem_page(struct inode *inode, struct page *page)
 }
 
 static int __revoke_inmem_pages(struct inode *inode,
-				struct list_head *head, bool drop, bool recover)
+				struct list_head *head, bool drop, bool recover,
+				bool trylock)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct inmem_pages *cur, *tmp;
@@ -228,7 +229,16 @@ static int __revoke_inmem_pages(struct inode *inode,
 		if (drop)
 			trace_f2fs_commit_inmem_page(page, INMEM_DROP);
 
-		lock_page(page);
+		if (trylock) {
+			/*
+			 * to avoid deadlock in between page lock and
+			 * inmem_lock.
+			 */
+			if (!trylock_page(page))
+				continue;
+		} else {
+			lock_page(page);
+		}
 
 		f2fs_wait_on_page_writeback(page, DATA, true);
 
@@ -311,13 +321,19 @@ void f2fs_drop_inmem_pages(struct inode *inode)
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct f2fs_inode_info *fi = F2FS_I(inode);
 
-	mutex_lock(&fi->inmem_lock);
-	__revoke_inmem_pages(inode, &fi->inmem_pages, true, false);
-	spin_lock(&sbi->inode_lock[ATOMIC_FILE]);
-	if (!list_empty(&fi->inmem_ilist))
-		list_del_init(&fi->inmem_ilist);
-	spin_unlock(&sbi->inode_lock[ATOMIC_FILE]);
-	mutex_unlock(&fi->inmem_lock);
+	while (!list_empty(&fi->inmem_pages)) {
+		mutex_lock(&fi->inmem_lock);
+		__revoke_inmem_pages(inode, &fi->inmem_pages,
+						true, false, true);
+
+		if (list_empty(&fi->inmem_pages)) {
+			spin_lock(&sbi->inode_lock[ATOMIC_FILE]);
+			if (!list_empty(&fi->inmem_ilist))
+				list_del_init(&fi->inmem_ilist);
+			spin_unlock(&sbi->inode_lock[ATOMIC_FILE]);
+		}
+		mutex_unlock(&fi->inmem_lock);
+	}
 
 	clear_inode_flag(inode, FI_ATOMIC_FILE);
 	fi->i_gc_failures[GC_FAILURE_ATOMIC] = 0;
@@ -421,12 +437,15 @@ retry:
 		 * recovery or rewrite & commit last transaction. For other
 		 * error number, revoking was done by filesystem itself.
 		 */
-		err = __revoke_inmem_pages(inode, &revoke_list, false, true);
+		err = __revoke_inmem_pages(inode, &revoke_list,
+						false, true, false);
 
 		/* drop all uncommitted pages */
-		__revoke_inmem_pages(inode, &fi->inmem_pages, true, false);
+		__revoke_inmem_pages(inode, &fi->inmem_pages,
+						true, false, false);
 	} else {
-		__revoke_inmem_pages(inode, &revoke_list, false, false);
+		__revoke_inmem_pages(inode, &revoke_list,
+						false, false, false);
 	}
 
 	return err;
@@ -527,8 +546,12 @@ void f2fs_balance_fs_bg(struct f2fs_sb_info *sbi)
 static int __submit_flush_wait(struct f2fs_sb_info *sbi,
 				struct block_device *bdev)
 {
-	struct bio *bio = f2fs_bio_alloc(sbi, 0, true);
+	struct bio *bio;
 	int ret;
+
+	bio = f2fs_bio_alloc(sbi, 0, false);
+	if (!bio)
+		return -ENOMEM;
 
 	bio->bi_rw = REQ_OP_WRITE;
 	bio->bi_bdev = bdev;
@@ -2944,10 +2967,10 @@ int f2fs_inplace_write_data(struct f2fs_io_info *fio)
 	stat_inc_inplace_blocks(fio->sbi);
 
 	err = f2fs_submit_page_bio(fio);
-	if (!err)
+	if (!err) {
 		update_device_state(fio);
-
-	f2fs_update_iostat(fio->sbi, fio->io_type, F2FS_BLKSIZE);
+		f2fs_update_iostat(fio->sbi, fio->io_type, F2FS_BLKSIZE);
+	}
 
 	return err;
 }

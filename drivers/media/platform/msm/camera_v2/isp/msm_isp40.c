@@ -169,8 +169,7 @@ static int32_t msm_vfe40_init_qos_parms(struct vfe_device *vfe_dev,
 			qos_regs, qos_entries);
 		if (rc < 0) {
 			pr_err("%s: NO QOS BUS BDG info\n", __func__);
-			kfree(qos_settings);
-			kfree(qos_regs);
+
 		} else {
 			if (qos_parms->settings) {
 				rc = of_property_read_u32_array(of_node,
@@ -179,20 +178,15 @@ static int32_t msm_vfe40_init_qos_parms(struct vfe_device *vfe_dev,
 				if (rc < 0) {
 					pr_err("%s: NO QOS settings\n",
 						__func__);
-					kfree(qos_settings);
-					kfree(qos_regs);
 				} else {
 					for (i = 0; i < qos_entries; i++)
 						msm_camera_io_w(qos_settings[i],
 							vfebase + qos_regs[i]);
-					kfree(qos_settings);
-					kfree(qos_regs);
 				}
-			} else {
-				kfree(qos_settings);
-				kfree(qos_regs);
 			}
 		}
+		kfree(qos_settings);
+		kfree(qos_regs);
 	}
 	rc = of_property_read_u32(of_node, ds_parms->entries,
 		&ds_entries);
@@ -216,8 +210,6 @@ static int32_t msm_vfe40_init_qos_parms(struct vfe_device *vfe_dev,
 			ds_regs, ds_entries);
 		if (rc < 0) {
 			pr_err("%s: NO D/S register info\n", __func__);
-			kfree(ds_settings);
-			kfree(ds_regs);
 		} else {
 			if (ds_parms->settings) {
 				rc = of_property_read_u32_array(of_node,
@@ -226,20 +218,16 @@ static int32_t msm_vfe40_init_qos_parms(struct vfe_device *vfe_dev,
 				if (rc < 0) {
 					pr_err("%s: NO D/S settings\n",
 						__func__);
-					kfree(ds_settings);
-					kfree(ds_regs);
-	} else {
+				} else {
 					for (i = 0; i < ds_entries; i++)
 						msm_camera_io_w(ds_settings[i],
 							vfebase + ds_regs[i]);
-						kfree(ds_regs);
-						kfree(ds_settings);
 				}
-			} else {
-				kfree(ds_regs);
-				kfree(ds_settings);
 			}
+
 		}
+		kfree(ds_settings);
+		kfree(ds_regs);
 	}
 	return 0;
 }
@@ -755,11 +743,11 @@ static void msm_vfe40_process_epoch_irq(struct vfe_device *vfe_dev,
 		return;
 
 	if (irq_status0 & BIT(2)) {
-		msm_isp_notify(vfe_dev, ISP_EVENT_SOF, VFE_PIX_0, ts);
 		ISP_DBG("%s: EPOCH0 IRQ\n", __func__);
 		msm_isp_update_framedrop_reg(vfe_dev, VFE_PIX_0);
 		msm_isp_update_stats_framedrop_reg(vfe_dev);
 		msm_isp_update_error_frame_count(vfe_dev);
+		msm_isp_notify(vfe_dev, ISP_EVENT_SOF, VFE_PIX_0, ts);
 		if (vfe_dev->axi_data.src_info[VFE_PIX_0].raw_stream_count > 0
 			&& vfe_dev->axi_data.src_info[VFE_PIX_0].
 			pix_stream_count == 0) {
@@ -1813,7 +1801,8 @@ static int msm_vfe40_axi_restart(struct vfe_device *vfe_dev,
 	/* Start AXI */
 	msm_camera_io_w(0x0, vfe_dev->vfe_base + 0x2C0);
 
-	msm_vfe40_config_irq(vfe_dev, vfe_dev->recovery_irq0_mask,
+	if (vfe_dev->recovery_irq0_mask || vfe_dev->recovery_irq1_mask)
+		msm_vfe40_config_irq(vfe_dev, vfe_dev->recovery_irq0_mask,
 		vfe_dev->recovery_irq1_mask, MSM_ISP_IRQ_SET);
 
 	vfe_dev->hw_info->vfe_ops.core_ops.reg_update(vfe_dev, VFE_SRC_MAX);

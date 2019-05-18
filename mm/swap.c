@@ -38,7 +38,7 @@
 #include <trace/events/pagemap.h>
 
 /* How many pages do we try to swap or page in/out together? */
-int page_cluster;
+int page_cluster = 0;
 
 static DEFINE_PER_CPU(struct pagevec, lru_add_pvec);
 static DEFINE_PER_CPU(struct pagevec, lru_rotate_pvecs);
@@ -1119,31 +1119,20 @@ unsigned pagevec_lookup(struct pagevec *pvec, struct address_space *mapping,
 }
 EXPORT_SYMBOL(pagevec_lookup);
 
-unsigned pagevec_lookup_range_tag(struct pagevec *pvec,
-		struct address_space *mapping, pgoff_t *index, pgoff_t end,
-		int tag)
+unsigned pagevec_lookup_tag(struct pagevec *pvec, struct address_space *mapping,
+		pgoff_t *index, int tag, unsigned nr_pages)
 {
-	pvec->nr = find_get_pages_range_tag(mapping, index, end, tag,
-					PAGEVEC_SIZE, pvec->pages);
+	pvec->nr = find_get_pages_tag(mapping, index, tag,
+					nr_pages, pvec->pages);
 	return pagevec_count(pvec);
 }
-EXPORT_SYMBOL(pagevec_lookup_range_tag);
+EXPORT_SYMBOL(pagevec_lookup_tag);
 
-unsigned pagevec_lookup_range_nr_tag(struct pagevec *pvec,
-		struct address_space *mapping, pgoff_t *index, pgoff_t end,
-		int tag, unsigned max_pages)
-{
-	pvec->nr = find_get_pages_range_tag(mapping, index, end, tag,
-		min_t(unsigned int, max_pages, PAGEVEC_SIZE), pvec->pages);
-	return pagevec_count(pvec);
-}
-EXPORT_SYMBOL(pagevec_lookup_range_nr_tag);
 /*
  * Perform any setup for the swap system
  */
 void __init swap_setup(void)
 {
-	unsigned long megs = totalram_pages >> (20 - PAGE_SHIFT);
 #ifdef CONFIG_SWAP
 	int i;
 
@@ -1155,11 +1144,6 @@ void __init swap_setup(void)
 	}
 #endif
 
-	/* Use a smaller cluster for small-memory machines */
-	if (megs < 16)
-		page_cluster = 2;
-	else
-		page_cluster = 3;
 	/*
 	 * Right now other parts of the system means that we
 	 * _really_ don't want to cluster much more
