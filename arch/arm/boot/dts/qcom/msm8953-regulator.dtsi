@@ -784,15 +784,15 @@
 
 		regulator-name = "msm_gfx_ldo";
 		regulator-min-microvolt = <1>;
-		regulator-max-microvolt = <8>;
+		regulator-max-microvolt = <9>;
 
 		/* Downvoltaged by -75mV */
 		qcom,ldo-voltage-ceiling = <595000 655000 725000>;
 		qcom,ldo-voltage-floor =   <485000 485000 575000>;
 
-		qcom,num-corners = <8>;
+		qcom,num-corners = <9>;
 		qcom,num-ldo-corners = <3>;
-		qcom,ldo-enable-corner-map = <1 1 1 0 0 0 0 0>;
+		qcom,ldo-enable-corner-map = <1 1 1 0 0 0 0 0 0>;
 		qcom,init-corner = <4>;
 
 		/* FIXME : This part can't be parsed, why this exists? */
