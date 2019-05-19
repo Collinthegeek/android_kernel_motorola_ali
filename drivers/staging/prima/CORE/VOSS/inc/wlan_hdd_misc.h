@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
- * Copyright (c) 2017 The LineageOS Project.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -57,7 +56,6 @@
 #define WLAN_HO_CFG_FILE           "wlan/wlan_ho_config"
 #endif // MSM_PLATFORM
 
-#define WLAN_MAC_FILE              "wlan/prima/wlan_mac.bin"
 
 VOS_STATUS hdd_request_firmware(char *pfileName,v_VOID_t *pCtx,v_VOID_t **ppfw_data, v_SIZE_t *pSize);
 
@@ -78,5 +76,8 @@ VOS_STATUS hdd_read_cfg_file(v_VOID_t *pCtx, char *pFileName, v_VOID_t *pBuffer,
 
 tVOS_CONCURRENCY_MODE hdd_get_concurrency_mode ( void );
 
+// BEGIN MOTOROLA IKJB42MAIN-274, dpn473, 01/02/2013, Add flag to disable/enable MCC mode
+v_U8_t hdd_get_mcc_mode( void );
+// END IKJB42MAIN-274
 #endif /* WLAN_HDD_MISC_H */
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -28974,7 +28974,8 @@ WDI_ProcessReceiveFilterSetFilterReq
    if ( NULL == pBSSSes )
    {
        WPAL_TRACE( eWLAN_MODULE_DAL_CTRL, eWLAN_PAL_TRACE_LEVEL_ERROR,
-                 " %s : Association for this BSSID does not exist",__func__);
+                 " %s : Association for this BSSID does not exist, filter Id =%d",
+                 __func__, pwdiSetRcvPktFilterReqInfo->wdiPktFilterCfg.filterId); // IKJB42MAIN-1244, Motorola, a19091
        return WDI_STATUS_E_FAILURE; 
    }
 
@@ -29361,7 +29362,8 @@ WDI_ProcessReceiveFilterClearFilterReq
    if ( NULL == pBSSSes )
    {
        WPAL_TRACE( eWLAN_MODULE_DAL_CTRL, eWLAN_PAL_TRACE_LEVEL_ERROR,
-                 " %s : Association for this BSSID does not exist",__func__);
+                 " %s : Association for this BSSID does not exist, filter ID = %d",
+                 __func__, pwdiRcvFltPktClearReqParamsType->filterClearParam.filterId); // IKJB42MAIN-1244, Motorola, a19091
        return WDI_STATUS_E_FAILURE; 
    }
 
@@ -31049,7 +31051,7 @@ WDI_ProcessFeatureCapsExchangeReq
     Send Start Request to HAL 
   -------------------------------------------------------------------------*/
   return  WDI_SendMsg( pWDICtx, pSendBuffer, usSendSize, 
-                       pEventData->pCBfnc,
+                       (WDI_StartRspCb)pEventData->pCBfnc,
                        pEventData->pUserData, WDI_FEATURE_CAPS_EXCHANGE_RESP);
   
 }/*WDI_ProcessFeatureCapsExchangeReq*/
@@ -31124,8 +31126,8 @@ WDI_ProcessFeatureCapsExchangeRsp
    wdiFeatureCapsExchangeCb = (WDI_featureCapsExchangeCb) pWDICtx -> pfncRspCB; 
 
    /*Notify UMAC - there is no callback right now but can be used in future if reqd */
-   if (wdiFeatureCapsExchangeCb)
-      wdiFeatureCapsExchangeCb(NULL, pWDICtx->pRspCBUserData);
+   if (wdiFeatureCapsExchangeCb != NULL)
+      wdiFeatureCapsExchangeCb(NULL, NULL);
 
    return WDI_STATUS_SUCCESS; 
 }

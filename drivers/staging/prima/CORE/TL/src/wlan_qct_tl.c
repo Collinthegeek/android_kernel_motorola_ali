@@ -11825,7 +11825,8 @@ WLAN_TLAPGetNextTxIds
 {
   WLANTL_CbType*  pTLCb;
   v_U8_t          ucACFilter = 1;
-  v_U8_t          ucNextSTA, ucTempSTA;
+  v_U8_t          ucNextSTA = 0; // Motorola IKJB42MAIN-4103, are002, initialization
+  v_U8_t          ucTempSTA;
   v_BOOL_t        isServed = TRUE;  //current round has find a packet or not
   v_U8_t          ucACLoopNum = WLANTL_AC_HIGH_PRIO + 1; //number of loop to go
   v_U8_t          uFlowMask; // TX FlowMask from WDA
@@ -11874,8 +11875,8 @@ WLAN_TLAPGetNextTxIds
 
   ++ucNextSTA;
 
-    if ( WLAN_MAX_STA_COUNT <= ucNextSTA )
-      ucNextSTA = 0;
+  if ( WLAN_MAX_STA_COUNT <= ucNextSTA )
+    ucNextSTA = 0;
 
     isServed = FALSE;
     if ( 0 == pTLCb->ucCurLeftWeight )

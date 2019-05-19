@@ -2967,11 +2967,10 @@ void lim_handle_ecsa_req(tpAniSirGlobal mac_ctx, struct ecsa_frame_params *ecsa_
    session->gLimChannelSwitch.secondarySubBand = PHY_SINGLE_CHANNEL_CENTERED;
    session->gLimWiderBWChannelSwitch.newChanWidth = 0;
 
-   ch_offset =
-       lim_get_channel_width_from_opclass(mac_ctx->scan.countryCodeCurrent,
-                                          ecsa_req->new_channel,
-                                          sta_ds->mlmStaContext.vhtCapability,
-                                          ecsa_req->op_class);
+   ch_offset = limGetOffChMaxBwOffsetFromChannel(
+                       mac_ctx->scan.countryCodeCurrent,
+                       ecsa_req->new_channel,
+                       sta_ds->mlmStaContext.vhtCapability);
    if (ch_offset == BW80) {
        session->gLimWiderBWChannelSwitch.newChanWidth =
                                   WNI_CFG_VHT_CHANNEL_WIDTH_80MHZ;
@@ -4839,8 +4838,8 @@ tSirRetStatus
 limEnableHT20Protection(tpAniSirGlobal pMac, tANI_U8 enable,
     tANI_U8 overlap, tpUpdateBeaconParams pBeaconParams,tpPESession psessionEntry)
 {
-        if(!psessionEntry->htCapability)
-            return eSIR_SUCCESS; // this protection  is only for HT stations.
+    if(!psessionEntry->htCapability)
+        return eSIR_SUCCESS; // this protection  is only for HT stations.
 
         //overlapping protection configuration check.
         if(overlap)
@@ -5049,8 +5048,8 @@ tSirRetStatus
 limEnableHTNonGfProtection(tpAniSirGlobal pMac, tANI_U8 enable,
     tANI_U8 overlap, tpUpdateBeaconParams pBeaconParams,tpPESession psessionEntry)
 {
-        if(!psessionEntry->htCapability)
-            return eSIR_SUCCESS; // this protection  is only for HT stations.
+    if(!psessionEntry->htCapability)
+        return eSIR_SUCCESS; // this protection  is only for HT stations.
 
         //overlapping protection configuration check.
         if(overlap)
@@ -5120,8 +5119,8 @@ tSirRetStatus
 limEnableHTLsigTxopProtection(tpAniSirGlobal pMac, tANI_U8 enable,
     tANI_U8 overlap, tpUpdateBeaconParams pBeaconParams,tpPESession psessionEntry)
 {
-        if(!psessionEntry->htCapability)
-            return eSIR_SUCCESS; // this protection  is only for HT stations.
+    if(!psessionEntry->htCapability)
+        return eSIR_SUCCESS; // this protection  is only for HT stations.
 
         //overlapping protection configuration check.
         if(overlap)
@@ -5193,8 +5192,8 @@ tSirRetStatus
 limEnableHtRifsProtection(tpAniSirGlobal pMac, tANI_U8 enable,
     tANI_U8 overlap, tpUpdateBeaconParams pBeaconParams,tpPESession psessionEntry)
 {
-        if(!psessionEntry->htCapability)
-            return eSIR_SUCCESS; // this protection  is only for HT stations.
+    if(!psessionEntry->htCapability)
+        return eSIR_SUCCESS; // this protection  is only for HT stations.
 
 
         //overlapping protection configuration check.

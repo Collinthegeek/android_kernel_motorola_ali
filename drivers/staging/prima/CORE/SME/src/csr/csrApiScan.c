@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -123,6 +123,7 @@ tCsrIgnoreChannels countryIgnoreList[MAX_COUNTRY_IGNORE] = {
 tCsrIgnoreChannels countryIgnoreList[MAX_COUNTRY_IGNORE] = { };
 #endif //CONFIG_ENABLE_LINUX_REG
 
+#define CSR_IS_SOCIAL_CHANNEL(channel) (((channel) == 1) || ((channel) == 6) || ((channel) == 11) )
 //*** This is temporary work around. It need to call CCM api to get to CFG later
 /// Get string parameter value
 extern tSirRetStatus wlan_cfgGetStr(tpAniSirGlobal, tANI_U16, tANI_U8*, tANI_U32*);
@@ -392,7 +393,7 @@ eHalStatus csrQueueScanRequest( tpAniSirGlobal pMac, tSmeCmd *pScanCmd )
      * candidates and resulting in disconnects.
      */
 
-    if (csrIsInfraApStarted(pMac) && !csrIsP2pGoSessionConnected(pMac))
+    if (csrIsInfraApStarted(pMac))
     {
       nNumChanCombinedConc = 1;
     }
@@ -5872,11 +5873,10 @@ static tANI_BOOLEAN csrScanProcessScanResults( tpAniSirGlobal pMac, tSmeCmd *pCo
      */
     if (pMac->scan.defer_update_channel_list) {
         status = csrUpdateChannelList(pMac);
-        if (eHAL_STATUS_SUCCESS != status) {
+        if (eHAL_STATUS_SUCCESS != status)
             smsLog(pMac, LOGE,
                    FL( "failed to update the supported channel list"));
             pMac->scan.defer_update_channel_list = false;
-        }
     }
 
 #ifdef WLAN_AP_STA_CONCURRENCY
@@ -6453,8 +6453,6 @@ eHalStatus csrSendMBScanReq( tpAniSirGlobal pMac, tANI_U16 sessionId,
                               pScanReq->uIEFieldLen);
             }
             pMsg->p2pSearch = pScanReq->p2pSearch;
-            pMsg->scan_randomize= pScanReq->scan_randomize;
-            pMsg->nl_scan = pScanReq->nl_scan;
 
             if (pScanReq->requestType == eCSR_SCAN_HO_BG_SCAN) 
             {
@@ -6669,9 +6667,6 @@ eHalStatus csrProcessMacAddrSpoofCommand( tpAniSirGlobal pMac, tSmeCmd *pCommand
       // spoof mac address
       vos_mem_copy((tANI_U8 *)pMsg->macAddr,
            (tANI_U8 *)pCommand->u.macAddrSpoofCmd.macAddr, sizeof(tSirMacAddr));
-      pMsg->spoof_mac_oui =
-       pal_cpu_to_be16(pCommand->u.macAddrSpoofCmd.spoof_mac_oui);
-
       status = palSendMBMessage(pMac->hHdd, pMsg);
    } while( 0 );
    return( status );
@@ -7060,7 +7055,9 @@ eHalStatus csrScanCopyRequest(tpAniSirGlobal pMac, tCsrScanRequest *pDstReq, tCs
                             {
                                 if((csrRoamIsValidChannel(pMac,
                                                 pSrcReq->ChannelInfo.
-                                                ChannelList[index])))
+                                                ChannelList[index])) ||
+                                    ((eCSR_SCAN_P2P_DISCOVERY == pSrcReq->requestType) &&
+				    CSR_IS_SOCIAL_CHANNEL(pSrcReq->ChannelInfo.ChannelList[index])))
                                 {
                                     /*Skiipping DFS Channels for 1st scan */
                                     if(NV_CHANNEL_DFS ==
@@ -7151,8 +7148,6 @@ eHalStatus csrScanCopyRequest(tpAniSirGlobal pMac, tCsrScanRequest *pDstReq, tCs
                     break;
                 }
             }//Allocate memory for SSID List
-            pDstReq->scan_randomize = pSrcReq->scan_randomize;
-            pDstReq->nl_scan = pSrcReq->nl_scan;
             pDstReq->p2pSearch = pSrcReq->p2pSearch;
             pDstReq->skipDfsChnlInP2pSearch = pSrcReq->skipDfsChnlInP2pSearch;
 
@@ -7311,7 +7306,7 @@ static void csrStaApConcTimerHandler(void *pv)
          * candidates and resulting in disconnects.
          */
 
-        if (csrIsInfraApStarted(pMac) && !csrIsP2pGoSessionConnected(pMac))
+        if (csrIsInfraApStarted(pMac))
         {
             nNumChanCombinedConc = 1;
         }

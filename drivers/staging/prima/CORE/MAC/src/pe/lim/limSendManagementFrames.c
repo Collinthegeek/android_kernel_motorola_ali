@@ -5525,6 +5525,8 @@ limSendVHTOpmodeNotificationFrame(tpAniSirGlobal pMac,
         txFlag |= HAL_USE_BD_RATE2_FOR_MANAGEMENT_FRAME;
     }
 
+    txFlag |= HAL_USE_PEER_STA_REQUESTED_MASK;
+
     MTRACE(macTrace(pMac, TRACE_CODE_TX_MGMT,
            psessionEntry->peSessionId,
            pMacHdr->fc.subType));
@@ -5665,6 +5667,8 @@ limSendVHTChannelSwitchMgmtFrame(tpAniSirGlobal pMac,
     {
         txFlag |= HAL_USE_BD_RATE2_FOR_MANAGEMENT_FRAME;
     }
+
+    txFlag |= HAL_USE_PEER_STA_REQUESTED_MASK;
 
     MTRACE(macTrace(pMac, TRACE_CODE_TX_MGMT,
            psessionEntry->peSessionId,
@@ -6130,15 +6134,15 @@ tSirRetStatus limSendAddBARsp( tpAniSirGlobal pMac,
   else
     return eSIR_SUCCESS;
 
-  returnAfterError:
-    // Release buffer, if allocated
-    if( NULL != pAddBARspBuffer )
-      palPktFree( pMac->hHdd,
-          HAL_TXRX_FRM_802_11_MGMT,
-          (void *) pAddBARspBuffer,
-          (void *) pPacket );
+    returnAfterError:
+      // Release buffer, if allocated
+      if( NULL != pAddBARspBuffer )
+        palPktFree( pMac->hHdd,
+            HAL_TXRX_FRM_802_11_MGMT,
+            (void *) pAddBARspBuffer,
+            (void *) pPacket );
 
-    return statusCode;
+      return statusCode;
 }
 
 /**
@@ -6336,16 +6340,16 @@ tSirRetStatus limSendDelBAInd( tpAniSirGlobal pMac,
   else
     return eSIR_SUCCESS;
 
-  returnAfterError:
+    returnAfterError:
 
-    // Release buffer, if allocated
-    if( NULL != pDelBAIndBuffer )
-      palPktFree( pMac->hHdd,
-          HAL_TXRX_FRM_802_11_MGMT,
-          (void *) pDelBAIndBuffer,
-          (void *) pPacket );
+      // Release buffer, if allocated
+      if( NULL != pDelBAIndBuffer )
+        palPktFree( pMac->hHdd,
+            HAL_TXRX_FRM_802_11_MGMT,
+            (void *) pDelBAIndBuffer,
+            (void *) pPacket );
 
-    return statusCode;
+      return statusCode;
 }
 
 #if defined WLAN_FEATURE_VOWIFI
@@ -6482,6 +6486,8 @@ limSendNeighborReportRequestFrame(tpAniSirGlobal        pMac,
     {
         txFlag |= HAL_USE_BD_RATE2_FOR_MANAGEMENT_FRAME;
     }
+
+   txFlag |= HAL_USE_PEER_STA_REQUESTED_MASK;
 
    MTRACE(macTrace(pMac, TRACE_CODE_TX_MGMT,
           psessionEntry->peSessionId,
