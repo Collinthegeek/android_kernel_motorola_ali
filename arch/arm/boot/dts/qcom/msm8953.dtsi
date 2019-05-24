@@ -542,7 +542,7 @@
 		qcom,vdd-gfx-rstr {
 			qcom,vdd-rstr-reg = "vdd-gfx";
 			qcom,levels = <5 7 9>; /* Nominal, Turbo, Turbo */
-			qcom,min-level = <1>; /* No Request */
+			qcom,min-level = <2>; /* No Request */
 		};
 
 		msm_thermal_freq: qcom,vdd-apps-rstr {
