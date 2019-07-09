@@ -315,7 +315,9 @@ static const char *const bpf_jmp_string[] = {
 	[BPF_EXIT >> 4] = "exit",
 };
 
-static void print_bpf_insn(const struct bpf_verifier_env *env,
+/*Here's where the first error is*/
+
+static void print_bpf_insn(const struct bpf_verifier_env *env, 
 			   const struct bpf_insn *insn)
 {
 	u8 class = BPF_CLASS(insn->code);
